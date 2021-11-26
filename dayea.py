@@ -1,8 +1,14 @@
+import os
+import dotenv
+from dotenv import load_dotenv
+from base64 import b64encode, b64decode
+from io import BytesIO
+
+from Crypto import Random
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
-from base64 import b64encode, b64decode
-from io import BytesIO
+
 
 # Primary reference: 
 # https://medium.com/quick-code/aes-implementation-in-python-a82f582f51c2
@@ -20,9 +26,18 @@ class AESCipher:
         # this would only have a single master pass
         # then this would do for now
 
-        hasher = SHA256.new(data=password.encode())
-        salt = hasher.digest()
-
+        try:
+            b64_salt = os.environ['MASTER-SALT']
+            # convert to bytes
+            salt = b64decode(b64_salt)
+        except KeyError as e:
+            salt = Random.get_random_bytes(self.block_size)
+            # convert to string
+            b64_salt = b64encode(salt)
+            # update environment variable
+            os.environ['MASTER-SALT'] = b64_salt.decode('utf-8')
+            dotenv.set_key('.env', 'MASTER-SALT', os.environ['MASTER-SALT'])
+            
         # N, r, p are based on the following lecture:
         # http://www.tarsnap.com/scrypt/scrypt-slides.pdf
         key = scrypt(password, salt, self.block_size, N=2**20, r=8, p=1)
@@ -72,6 +87,7 @@ class AESCipher:
         return data
 
 if __name__ == '__main__':
+    load_dotenv()
     print("ENCRYPT PASSWORD? (Y/N)")
     if input().upper() == 'Y':
         print("ENTER MASTER PASSWORD:")
