@@ -26,11 +26,6 @@ class Dayea:
     
     def __derive_key(self, password):
 
-        # ideally, the salt should be random and
-        # do not rely with the password, but since
-        # this would only have a single master pass
-        # then this would do for now
-
         try:
             b64_salt = os.environ['MASTER-SALT']
             # convert to bytes
