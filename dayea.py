@@ -2,6 +2,7 @@ from Crypto.Protocol.KDF import scrypt
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from base64 import b64encode, b64decode
+from io import BytesIO
 
 # Primary reference: 
 # https://medium.com/quick-code/aes-implementation-in-python-a82f582f51c2
@@ -56,12 +57,17 @@ class AESCipher:
     
     def encrypt(self, plaintext):
         nonce, ciphertext, tag = self.__encrypt(plaintext)
+        raw_binary = BytesIO()
+        [raw_binary.write(x) for x in (nonce, tag, ciphertext)]
         with open(self.filepath, 'wb') as f:
-            [f.write(x) for x in (nonce, tag, ciphertext)]
+            f.write(b64encode(raw_binary.getvalue()))
     
     def decrypt(self):
+        encoded_binary = BytesIO()
         with open(self.filepath, 'rb') as f:
-            nonce, tag, ciphertext = [ f.read(x) for x in (self.block_size, self.block_size, -1) ]
+            encoded_binary.write(f.read())
+        raw_binary = BytesIO(b64decode(encoded_binary.getvalue()))
+        nonce, tag, ciphertext = [ raw_binary.read(x) for x in (self.block_size, self.block_size, -1) ]
         data = self.__decrypt(nonce, ciphertext, tag)
         return data
 
