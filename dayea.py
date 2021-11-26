@@ -107,6 +107,19 @@ class Dayea:
             
             print(db)
             json.dump(db, db_file)
+    
+    def get_accounts(self):
+
+        with open('test.json') as db_file:
+            try:
+                db = json.load(db_file)
+            except Exception as e:
+                print(e)
+                db = { }
+            
+        for site, site_accounts in db.items():
+            for account, encoded_password in site_accounts.items():
+                yield (site, account, self.decrypt(encoded_password.encode('utf-8')))
 
 if __name__ == '__main__':
     load_dotenv()
@@ -121,20 +134,14 @@ if __name__ == '__main__':
             username = input("Enter username/email: ")
             password = input("Enter your password (be careful of people snooping): ")
             dayea.add_account(site, username, password)
+        elif mode == 2:
+            for site, username, password in dayea.get_accounts():
+                print("Enter password for: ", site, username)
+                for i in range(3):
+                    attempt = input()
+                    if attempt == password:
+                        print("Correct!")
+                        break
+                    else:
+                        print(f"Wrong. {3-i-1} attempts left...")
             
-
-    # print("ENCRYPT PASSWORD? (Y/N)")
-    # if input().upper() == 'Y':
-    #     print("ENTER MASTER PASSWORD:")
-    #     password = input()
-    #     print("ENTER PASSWORD:")
-    #     plaintext = input()
-
-    #     dayea = Dayea(password)
-    #     dayea.encrypt(plaintext)
-    # else:
-    #     print("ENTER MASTER PASSWORD:")
-    #     password = input()
-
-    #     dayea = Dayea(password)
-    #     print(dayea.decrypt())
