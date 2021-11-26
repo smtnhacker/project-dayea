@@ -3,6 +3,7 @@ import dotenv
 from dotenv import load_dotenv
 from base64 import b64encode, b64decode
 from io import BytesIO
+import json
 
 from Crypto import Random
 from Crypto.Protocol.KDF import scrypt
@@ -13,7 +14,11 @@ from Crypto.Hash import SHA256
 # Primary reference: 
 # https://medium.com/quick-code/aes-implementation-in-python-a82f582f51c2
 # Note: it's a starred medium article!
-class AESCipher:
+class Dayea:
+    """
+    An AES Cipher class
+    """
+
     def __init__(self, password):
         self.block_size = 16
         self.key = self.__derive_key(password)
@@ -70,36 +75,66 @@ class AESCipher:
         plaintext = self.__unpad(data)
         return plaintext
     
-    def encrypt(self, plaintext):
+    def encrypt(self, plaintext : str) -> bytes:
         nonce, ciphertext, tag = self.__encrypt(plaintext)
         raw_binary = BytesIO()
         [raw_binary.write(x) for x in (nonce, tag, ciphertext)]
-        with open(self.filepath, 'wb') as f:
-            f.write(b64encode(raw_binary.getvalue()))
-    
-    def decrypt(self):
-        encoded_binary = BytesIO()
-        with open(self.filepath, 'rb') as f:
-            encoded_binary.write(f.read())
+        encoded_binary = b64encode(raw_binary.getvalue())
+        return encoded_binary
+
+    def decrypt(self, encoded_binary : bytes) -> str:
+        encoded_binary = BytesIO(encoded_binary)
         raw_binary = BytesIO(b64decode(encoded_binary.getvalue()))
         nonce, tag, ciphertext = [ raw_binary.read(x) for x in (self.block_size, self.block_size, -1) ]
         data = self.__decrypt(nonce, ciphertext, tag)
         return data
+    
+    def add_account(self, site, username, password):
+
+        encoded_password = self.encrypt(password)
+        with open('test.json', 'a+') as db_file:
+            try:
+                db = json.load(db_file)
+            except Exception:
+                db = { }
+            
+            if not site in db.keys():
+                db[site] = { }
+            try:
+                db[site][username] = encoded_password.decode('utf-8')
+            except KeyError:
+                db[site] = { username : encoded_password.decode('utf-8') }
+            
+            print(db)
+            json.dump(db, db_file)
 
 if __name__ == '__main__':
     load_dotenv()
-    print("ENCRYPT PASSWORD? (Y/N)")
-    if input().upper() == 'Y':
-        print("ENTER MASTER PASSWORD:")
-        password = input()
-        print("ENTER PASSWORD:")
-        plaintext = input()
 
-        dayea = AESCipher(password)
-        dayea.encrypt(plaintext)
-    else:
-        print("ENTER MASTER PASSWORD:")
-        password = input()
+    master = input("Enter master password: ")
+    dayea = Dayea(master)
 
-        dayea = AESCipher(password)
-        print(dayea.decrypt())
+    while input("Continue? (Y/N): ").upper() == 'Y':
+        mode = int(input("What do you want to do? (1) Add account or (2) Memorize passwords?: "))
+        if mode == 1:
+            site = input("Enter site name: ")
+            username = input("Enter username/email: ")
+            password = input("Enter your password (be careful of people snooping): ")
+            dayea.add_account(site, username, password)
+            
+
+    # print("ENCRYPT PASSWORD? (Y/N)")
+    # if input().upper() == 'Y':
+    #     print("ENTER MASTER PASSWORD:")
+    #     password = input()
+    #     print("ENTER PASSWORD:")
+    #     plaintext = input()
+
+    #     dayea = Dayea(password)
+    #     dayea.encrypt(plaintext)
+    # else:
+    #     print("ENTER MASTER PASSWORD:")
+    #     password = input()
+
+    #     dayea = Dayea(password)
+    #     print(dayea.decrypt())
