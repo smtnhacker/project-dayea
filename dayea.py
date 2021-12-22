@@ -5,11 +5,13 @@ from base64 import b64encode, b64decode
 from io import BytesIO
 import json
 
+import random
+import string
+
 from Crypto import Random
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
-
 
 # Primary reference: 
 # https://medium.com/quick-code/aes-implementation-in-python-a82f582f51c2
@@ -19,10 +21,10 @@ class Dayea:
     An AES Cipher class
     """
 
-    def __init__(self, password):
+    def __init__(self, password : str, filepath : str):
         self.block_size = 16
         self.key = self.__derive_key(password)
-        self.filepath = 'test.bin'
+        self.filepath = filepath
     
     def __derive_key(self, password):
 
@@ -87,40 +89,53 @@ class Dayea:
     def add_account(self, site, username, password):
 
         encoded_password = self.encrypt(password)
-        with open('test.json', 'a+') as db_file:
+        with open(self.filepath, 'r') as db_file:
             try:
-                db = json.load(db_file)
-            except Exception:
+                data = db_file.read()
+                db = json.loads(data)
+            except Exception as e:
+                print(e)
                 db = { }
             
-            if not site in db.keys():
-                db[site] = { }
-            try:
-                db[site][username] = encoded_password.decode('utf-8')
-            except KeyError:
-                db[site] = { username : encoded_password.decode('utf-8') }
-            
-            print(db)
+        if not site in db.keys():
+            db[site] = { }
+        try:
+            db[site][username] = encoded_password.decode('utf-8')
+        except KeyError:
+            db[site] = { username : encoded_password.decode('utf-8') }
+        
+        with open(self.filepath, 'w') as db_file:
             json.dump(db, db_file)
     
     def get_accounts(self):
 
-        with open('test.json') as db_file:
+        with open(self.filepath) as db_file:
             try:
                 db = json.load(db_file)
             except Exception as e:
                 print(e)
                 db = { }
-            
-        for site, site_accounts in db.items():
-            for account, encoded_password in site_accounts.items():
-                yield (site, account, self.decrypt(encoded_password.encode('utf-8')))
 
+        # Arrange the items
+        # For now, just randomly shuffle them
+
+        def get_randomized_keys(db):
+            keys = list(db.keys())
+            random.shuffle(keys)
+            for key in keys:
+                yield key
+        
+        for site in get_randomized_keys(db):
+            site_accounts = db[site]
+            for account in get_randomized_keys(site_accounts):
+                encoded_password = site_accounts[account]
+                yield (site, account, self.decrypt(encoded_password.encode('utf-8')))
+            
 if __name__ == '__main__':
     load_dotenv()
 
     master = input("Enter master password: ")
-    dayea = Dayea(master)
+    dayea = Dayea(password=master, filepath='test.json')
 
     while input("Continue? (Y/N): ").upper() == 'Y':
         mode = int(input("What do you want to do? (1) Add account or (2) Memorize passwords?: "))
