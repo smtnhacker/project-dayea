@@ -1,9 +1,14 @@
+from dis import Instruction
 import os
 import dotenv
 from dotenv import load_dotenv
 from base64 import b64encode, b64decode
 from io import BytesIO
 import json
+import datetime as dt
+from datetime import datetime
+from datetime import date
+from collections import deque
 
 import random
 import string
@@ -89,25 +94,93 @@ class Dayea:
     def add_account(self, site, username, password):
 
         encoded_password = self.encrypt(password)
-        with open(self.filepath, 'r') as db_file:
-            try:
-                data = db_file.read()
-                db = json.loads(data)
-            except Exception as e:
-                print(e)
-                db = { }
+        try:
+            with open(self.filepath, 'r') as db_file:
+                try:
+                    data = db_file.read()
+                    db = json.loads(data)
+                except Exception as e:
+                    print(e)
+                    db = { }
+        except IOError:
+            db = { }
+
+        entry = {
+            "Password" : encoded_password.decode('utf-8'),
+            "New" : True,
+            "Ease" : 2.0,
+            "Due" : date.today().strftime("%Y/%m/%d") 
+        }
             
         if not site in db.keys():
             db[site] = { }
         try:
-            db[site][username] = encoded_password.decode('utf-8')
+            db[site][username] = entry
         except KeyError:
-            db[site] = { username : encoded_password.decode('utf-8') }
+            db[site] = { username : entry}
         
         with open(self.filepath, 'w') as db_file:
             json.dump(db, db_file)
     
-    def get_accounts(self):
+    def edit_account(self, site, old_user, new_user):
+
+        try:
+            with open(self.filepath, 'r') as db_file:
+                try:
+                    data = db_file.read()
+                    db = json.loads(data)
+                except Exception as e:
+                    print(e)
+                    return
+        except Exception as e:
+            print(e)
+            return
+        
+        try:
+            db[site][new_user] = db[site].pop(old_user)
+        except Exception as e:
+            print(e)
+        else:
+            with open(self.filepath, 'w') as db_file:
+                json.dump(db, db_file)
+        
+    def remove_account(self, site, username):
+        try:
+            with open(self.filepath, 'r') as db_file:
+                data = db_file.read()
+                db = json.loads(data)
+                db[site].pop(username, None)
+        except Exception as e:
+            print(e)
+        else:
+            with open(self.filepath, 'w') as db_file:
+                json.dump(db, db_file)
+    
+    def update_dues(self, to_update):
+        try:
+            with open(self.filepath, 'r') as db_file:
+                try:
+                    data = db_file.read()
+                    db = json.loads(data)
+                except Exception as e:
+                    print(e)
+                    return
+        except Exception as e:
+            print(e)
+            return
+        
+        for site, username, entry in to_update:
+            db[site][username] = {**entry, "Password" : self.encrypt(entry["Password"]).decode('utf-8')}
+        
+        try:
+            json.dumps(db)
+        except Exception as e:
+            print(e)
+        else:
+            with open(self.filepath, 'w') as db_file:
+                json.dump(db, db_file)
+    
+    def get_accounts(self, due):
 
         with open(self.filepath) as db_file:
             try:
@@ -116,20 +189,30 @@ class Dayea:
                 print(e)
                 db = { }
 
-        # Arrange the items
-        # For now, just randomly shuffle them
+        # Get the new cards
+        new_left = 20
+        for site, account_list in db.items():
+            for username, entry in account_list.items():
+                if new_left == 0:
+                    break
+                if entry.get("New", False):
+                    decoded_password = self.decrypt(entry["Password"].encode('utf-8'))
+                    new_left -= 1
+                    entry["New"] = False
+                    entry["Buried"] = True
+                    yield (site, username, {**entry, "Password" : decoded_password, "Attempts" : 3})
 
-        def get_randomized_keys(db):
-            keys = list(db.keys())
-            random.shuffle(keys)
-            for key in keys:
-                yield key
-        
-        for site in get_randomized_keys(db):
-            site_accounts = db[site]
-            for account in get_randomized_keys(site_accounts):
-                encoded_password = site_accounts[account]
-                yield (site, account, self.decrypt(encoded_password.encode('utf-8')))
+        # Get due cards
+        for site, account_list in db.items():
+            for username, entry in account_list.items():
+                if entry.get("Buried", False):
+                    continue
+                accnt_due_date_raw = entry.get("Due", due.strftime("%Y/%m/%d"))
+                accnt_due = datetime.date(datetime.strptime(accnt_due_date_raw, "%Y/%m/%d"))
+
+                if due >= accnt_due:
+                    decoded_password = self.decrypt(entry["Password"].encode('utf-8'))
+                    yield (site, username, {**entry, "Password" : decoded_password, "Attempts" : 2})
             
 if __name__ == '__main__':
     load_dotenv()
@@ -138,20 +221,76 @@ if __name__ == '__main__':
     dayea = Dayea(password=master, filepath='test.json')
 
     while input("Continue? (Y/N): ").upper() == 'Y':
-        mode = int(input("What do you want to do? (1) Add account or (2) Memorize passwords?: "))
-        if mode == 1:
-            site = input("Enter site name: ")
-            username = input("Enter username/email: ")
-            password = input("Enter your password (be careful of people snooping): ")
+
+        instructions = """What do you want to do?
+            (1) Add Account
+            (2) Remove Account
+            (3) Edit Account Password
+            (4) Edit Account Username
+            (5) Memorize
+        """
+
+        CONST_INPUT_SITE_INSTRUCTION = "Enter site name: "
+        CONST_INPUT_USER_INSTRUCTION = "Enter username/email: "
+        CONST_INPUT_PASS_INSTRUCTION = "Enter your password (be careful of people snooping): "        
+
+        mode = int(input(instructions))
+
+        if mode == 1 or mode == 3:
+            site = input(CONST_INPUT_SITE_INSTRUCTION)
+            username = input(CONST_INPUT_USER_INSTRUCTION)
+            password = input(CONST_INPUT_PASS_INSTRUCTION)
             dayea.add_account(site, username, password)
+
         elif mode == 2:
-            for site, username, password in dayea.get_accounts():
+            site = input(CONST_INPUT_SITE_INSTRUCTION)
+            username = input(CONST_INPUT_USER_INSTRUCTION)
+            dayea.remove_account(site, username)
+        
+        elif mode == 4:
+            site = input(CONST_INPUT_SITE_INSTRUCTION)
+            old_user = input("Enter old username/email: ")
+            new_user = input("Enter new username/email: ")
+            dayea.edit_account(site, old_user, new_user)
+        
+        elif mode == 5:
+
+            cur_date = date.today()
+            review_stack = deque(dayea.get_accounts(cur_date))
+            to_update = []
+
+            while review_stack:
+
+                site, username, entry = review_stack.popleft()
+
                 print("Enter password for: ", site, username)
+
+                password = entry["Password"]
+                passed = False
+
                 for i in range(3):
                     attempt = input()
                     if attempt == password:
                         print("Correct!")
+                        passed = True
                         break
                     else:
                         print(f"Wrong. {3-i-1} attempts left...")
+
+                if passed:
+                    attempts_left = entry.get("Attempts", 2) - 1
+                    if attempts_left:
+                        review_stack.append((site, username, {**entry, "Attempts" : attempts_left}))
+                    else:
+                        entry.pop('Buried', None)
+                        entry.pop("Attempts", None)
+                        entry.pop("New", None)
+                        entry["Due"] = (cur_date + dt.timedelta(days=int(0.5+entry["Ease"]))).strftime("%Y/%m/%d")
+                        entry["Ease"] += 0.10
+                        to_update.append((site, username, entry))
+                else:
+                    ease = max(entry["Ease"] - 0.2, 1.30)
+                    review_stack.append((site, username, {**entry, "Ease" : ease}))
+            
+            dayea.update_dues(to_update)
             
