@@ -108,8 +108,9 @@ class Dayea:
         entry = {
             "Password" : encoded_password.decode('utf-8'),
             "New" : True,
-            "Ease" : 2.0,
-            "Due" : date.today().strftime("%Y/%m/%d") 
+            "Ease" : 1.5,
+            "Due" : date.today().strftime("%Y/%m/%d"),
+            "Interval" : 2, 
         }
             
         if not site in db.keys():
@@ -273,6 +274,7 @@ if __name__ == '__main__':
                     if attempt == password:
                         print("Correct!")
                         passed = True
+                        attempts_taken = i+1
                         break
                     else:
                         print(f"Wrong. {3-i-1} attempts left...")
@@ -285,10 +287,13 @@ if __name__ == '__main__':
                         entry.pop('Buried', None)
                         entry.pop("Attempts", None)
                         entry.pop("New", None)
-                        entry["Due"] = (cur_date + dt.timedelta(days=int(0.5+entry["Ease"]))).strftime("%Y/%m/%d")
-                        entry["Ease"] += 0.10
+                        new_interval = int(0.5 + entry.get("Interval", 2) * entry["Ease"])
+                        entry["Due"] = (cur_date + dt.timedelta(days=new_interval)).strftime("%Y/%m/%d")
+                        entry["Ease"] += 0.075 * (3 - attempts_taken)
+                        entry["Interval"] = new_interval
                         to_update.append((site, username, entry))
                 else:
+                    print("Password:", password)
                     ease = max(entry["Ease"] - 0.2, 1.30)
                     review_stack.append((site, username, {**entry, "Ease" : ease}))
             
