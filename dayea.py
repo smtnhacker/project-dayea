@@ -108,9 +108,10 @@ class Dayea:
         entry = {
             "Password" : encoded_password.decode('utf-8'),
             "New" : True,
-            "Ease" : 1.5,
+            "Ease" : 2.0,
             "Due" : date.today().strftime("%Y/%m/%d"),
-            "Interval" : 2, 
+            "Interval" : 1,
+            "Days Reviewed" : 0, 
         }
             
         if not site in db.keys():
@@ -287,10 +288,18 @@ if __name__ == '__main__':
                         entry.pop('Buried', None)
                         entry.pop("Attempts", None)
                         entry.pop("New", None)
-                        new_interval = int(0.5 + entry.get("Interval", 2) * entry["Ease"])
+
+                        if entry.get("Days Reviewed", 0) == 0:
+                            new_interval = 2
+                        elif entry.get("Days Reviewed", 0) == 1:
+                            new_interval = 6
+                        else:
+                            new_interval = int(0.5 + entry.get("Interval", 2) * entry["Ease"])
+
                         entry["Due"] = (cur_date + dt.timedelta(days=new_interval)).strftime("%Y/%m/%d")
                         entry["Ease"] += 0.075 * (3 - attempts_taken)
                         entry["Interval"] = new_interval
+                        entry["Days Reviewed"] = entry.get("Days Reviewed", 0) + 1
                         to_update.append((site, username, entry))
                 else:
                     print("Password:", password)
