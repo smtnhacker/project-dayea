@@ -52,7 +52,7 @@ python dayea.py
 ## Roadmap
 
 - [x] Create a basic encryption/decryption module
-- [ ] Add support for multiple account passwords
+- [x] Add support for multiple account passwords
 - [ ] Create a GUI
 
 ## Support
@@ -67,7 +67,7 @@ I don't think I'll accept for now, but you can always make a Pull Request and hi
 
 ## License
 
-_TO-DO: Add a license_
+MIT License
 
 ## Disclaimer
 
