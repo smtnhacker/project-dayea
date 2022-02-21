@@ -1,6 +1,8 @@
 from dis import Instruction
+from email.charset import QP
 import os
 import dotenv
+import sys
 from dotenv import load_dotenv
 from base64 import b64encode, b64decode
 from io import BytesIO
@@ -17,6 +19,18 @@ from Crypto import Random
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
+
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QLabel,
+    QWidget,
+    QGridLayout,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout, 
+    QHBoxLayout,
+)
 
 # Primary reference: 
 # https://medium.com/quick-code/aes-implementation-in-python-a82f582f51c2
@@ -215,9 +229,81 @@ class Dayea:
                 if due >= accnt_due:
                     decoded_password = self.decrypt(entry["Password"].encode('utf-8'))
                     yield (site, username, {**entry, "Password" : decoded_password, "Attempts" : 2})
+
+class DayeaUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        self.setWindowTitle('Project  Dayea')
+        self.setGeometry(100, 100, 500, 80)
+
+        self.generalLayout = QVBoxLayout()
+        self._centralWidget = QWidget(self)
+        self.setCentralWidget(self._centralWidget)
+        self._centralWidget.setLayout(self.generalLayout)
+
+        self._createMainLayout()
+    
+    def _createMainLayout(self):
+        """Creates the main layout"""
+        
+        # Create the Master Key Part
+        self.masterPasswordContainer = QHBoxLayout()
+        self.topWidget = QWidget()
+        self.enterMasterLabel = QLabel("Enter Master Password: ")
+        self.masterPasswordLineEdit = QLineEdit()
+        self.masterPasswordLineEdit.setMinimumWidth(300)
+        self.updateMasterPasswordBtn = QPushButton("Submit")
+
+        self.masterPasswordContainer.addWidget(self.enterMasterLabel)
+        self.masterPasswordContainer.addWidget(self.masterPasswordLineEdit)
+        self.masterPasswordContainer.addWidget(self.updateMasterPasswordBtn)
+        self.topWidget.setLayout(self.masterPasswordContainer)
+        self.generalLayout.addWidget(self.topWidget)
+
+        # Create the Main Functionality Part
+        # Add the buttons
+        self.mainContainer = QVBoxLayout()
+        self.startReviewBtn = QPushButton("Review")
+        self.editEntriesBtn = QPushButton("Edit Entries")
+        self.mainContainer.addWidget(self.startReviewBtn)
+        self.mainContainer.addWidget(self.editEntriesBtn)
+        
+        # Add the Review Section Labels
+        self.entryLabelContainer = QHBoxLayout()
+        self.siteLabel = QLabel("Site: ")
+        self.accountLabel = QLabel("Account: ")
+        self.entryLabelContainer.addWidget(self.siteLabel)
+        self.entryLabelContainer.addWidget(self.accountLabel)
+        self.mainContainer.addLayout(self.entryLabelContainer)
+
+        # Add the review section core functionality
+        self.passwordInputContainer = QHBoxLayout()
+        self.passwordInputLabel = QLabel("Enter Password: ")
+        self.passwordEdit = QLineEdit()
+        self.passwordEdit.setMinimumWidth(400)
+        self.reviewSubmitBtn = QPushButton("Submit")
+        self.passwordInputContainer.addWidget(self.passwordInputLabel)
+        self.passwordInputContainer.addWidget(self.passwordEdit)
+        self.passwordInputContainer.addWidget(self.reviewSubmitBtn)
+        self.mainContainer.addLayout(self.passwordInputContainer)
+
+        self.generalLayout.addLayout(self.mainContainer)
+
+    def run(self):
+        self.show()
+
             
 if __name__ == '__main__':
     load_dotenv()
+
+    # Create an instance of QApplication
+    qtDayea = QApplication(sys.argv)
+    # Show the GUI
+    app = DayeaUI()
+    app.run()
+    # Execute the main loop
+    sys.exit(qtDayea.exec_())
 
     master = input("Enter master password: ")
     dayea = Dayea(password=master, filepath='test.json')
