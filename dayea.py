@@ -44,6 +44,8 @@ class Dayea:
         self.block_size = 16
         self.key = self.__derive_key(password)
         self.filepath = filepath
+
+        self.in_review = False
     
     def __derive_key(self, password):
 
@@ -230,6 +232,78 @@ class Dayea:
                     decoded_password = self.decrypt(entry["Password"].encode('utf-8'))
                     yield (site, username, {**entry, "Password" : decoded_password, "Attempts" : 2})
 
+    def start_review(self):
+        """
+        Starts a review session
+        """
+
+        cur_date = date.today()
+        self.review_stack = deque(self.get_accounts(cur_date))
+        self.in_review = True
+        self.to_update = []
+    
+    def get_entry(self):
+        """Gets the next entry to review"""
+
+        if not self.in_review:
+            return (None, None)
+        
+        if not self.review_stack:
+            self.update_dues(self.to_update)
+            self.in_review = False
+            return (None, None)
+
+        site, username, entry = self.review_stack.popleft()
+        self.cur_review = {
+            "Site": site,
+            "Username": username,
+            "Entry": entry,
+        }
+
+        print(self.review_stack)
+
+        return (site, username) 
+    
+    def attempt_upload_answer(self, attempt):
+        
+        cur_date = date.today()
+        password = self.cur_review["Entry"]["Password"]
+        site = self.cur_review["Site"]
+        username = self.cur_review["Username"]
+        consc_attempt = self.cur_review["Entry"].get("Consc Attempt", 0) + 1
+
+        if attempt == password:
+            attempts_left = self.cur_review["Entry"].get("Attempts", 2) - 1
+            self.cur_review["Entry"].pop('Consc Attempt', None)
+            if attempts_left:
+                self.review_stack.append((site, username, {**self.cur_review["Entry"], "Attempts" : attempts_left}))
+            else:
+                self.cur_review["Entry"].pop('Buried', None)
+                self.cur_review["Entry"].pop('New', None)
+
+                if self.cur_review["Entry"].get("Days Reviewed", 0) == 0:
+                    new_interval = 2
+                elif self.cur_review["Entry"].get("Days Reviewed", 0) == 1:
+                    new_interval = 6
+                else:
+                    new_interval = int(0.5 + self.cur_review["Entry"].get("Interval", 2) * self.cur_review["Entry"]["Ease"])
+                
+                self.cur_review["Entry"]["Due"] = (cur_date + dt.timedelta(days=new_interval)).strftime("%Y/%m/%d")
+                self.cur_review["Entry"]["Ease"] += 0.075 * (3 - consc_attempt)
+                self.cur_review["Entry"]["Interval"] = new_interval
+                self.cur_review["Entry"]["Days Reviewed"] = self.cur_review["Entry"].get("Days Reviewed", 0) + 1
+                self.to_update.append((site, username, self.cur_review["Entry"]))
+            return True, ''
+        else:
+            self.cur_review["Entry"]["Consc Attempt"] = consc_attempt
+            if consc_attempt == 3:
+                ease = max(self.cur_review["Entry"]["Ease"] - 0.2, 1.30)
+                self.review_stack.append((site, username, {**self.cur_review["Entry"], "Ease" : ease}))
+                return (False, password)
+            else:
+                self.review_stack.appendleft((site, username, self.cur_review["Entry"]))
+            return False, ''
+
 class DayeaUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -288,10 +362,94 @@ class DayeaUI(QMainWindow):
         self.passwordInputContainer.addWidget(self.reviewSubmitBtn)
         self.mainContainer.addLayout(self.passwordInputContainer)
 
+        # Add the Feedback
+        self.feedbackContainer = QVBoxLayout()
+        self.feedbackResultLabel = QLabel("Result: ")
+        self.feedbackContainer.addWidget(self.feedbackResultLabel)
+        self.mainContainer.addLayout(self.feedbackContainer)
+
         self.generalLayout.addLayout(self.mainContainer)
+    
+    def getMasterPassword(self):
+        res = self.masterPasswordLineEdit.text()
+        self.masterPasswordLineEdit.setText('')
+        return res 
+    
+    def showEntryDetails(self, site, account):
+        self.siteLabel.setText(f'Site: {site}')
+        self.accountLabel.setText(f'Account: {account}')
+    
+    def clearEntryDetails(self):
+        self.showEntryDetails('', '')
+    
+    def showFeedback(self, feedback):
+        self.feedbackResultLabel.setText(f'Result: {feedback}')
 
     def run(self):
         self.show()
+
+class DayeaCtrl:
+    """Dayea's Controller"""
+    def __init__(self, view, modelClass):
+        """Controller Initialization"""
+        self._view = view
+        self._modelClass = modelClass
+        self._connectSignals()
+    
+    def _createModel(self, masterKey):
+        """Creates the model using a master key"""
+        self._model = self._modelClass(password=masterKey, filepath='test.json')
+        self._view.showFeedback('Loaded Dayea!')
+        print(f"Created dayea with master key {masterKey}")
+    
+    def _updateReviewUI(self):
+        """Updates the review shz"""
+
+        site, username = self._model.get_entry()
+
+        if not site and not username:
+            self._view.clearEntryDetails()
+            self._view.showFeedback("Finished review!")
+        
+        else:
+            self._view.showEntryDetails(site, username)
+    
+    def _startReview(self):
+        """Starts a review session"""
+        self._model.start_review()
+        self._updateReviewUI()
+    
+    def _submitAttempt(self):
+        """If in a review, tries to submit attempt"""
+
+        attempt = self._view.passwordEdit.text()
+        result, password = self._model.attempt_upload_answer(attempt)
+
+        if result:
+            self._view.showFeedback("Correct!")
+        elif not password:
+            self._view.showFeedback("Wrong. Try again...")
+        else:
+            self._view.showFeedback(f"The answer is: {password}")
+        
+        self._updateReviewUI()
+        self._view.passwordEdit.setText('')
+
+    
+    def _connectSignals(self):
+        """Connects Signals and Slots"""
+
+        # Connect the Master Key Input
+        self._view.updateMasterPasswordBtn.clicked.connect(
+            lambda : self._createModel(self._view.getMasterPassword())
+        )
+
+        # Connect the review mechanism
+        self._view.startReviewBtn.clicked.connect(self._startReview)
+        self._view.reviewSubmitBtn.clicked.connect(self._submitAttempt)
+        self._view.passwordEdit.returnPressed.connect(self._submitAttempt)
+
+        # Connect the edit entries mechanism
 
             
 if __name__ == '__main__':
@@ -302,6 +460,8 @@ if __name__ == '__main__':
     # Show the GUI
     app = DayeaUI()
     app.run()
+    # Create model and controller
+    DayeaCtrl(view=app, modelClass=Dayea)
     # Execute the main loop
     sys.exit(qtDayea.exec_())
 
